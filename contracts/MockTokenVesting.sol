@@ -12,9 +12,6 @@ contract MockTokenVesting is TokenVesting{
 
     uint256 mockTime = 0;
 
-    constructor(address token_) TokenVesting(token_){
-    }
-
     function setCurrentTime(uint256 _time)
         external{
         mockTime = _time;
