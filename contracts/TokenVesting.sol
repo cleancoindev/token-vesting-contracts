@@ -42,17 +42,19 @@ contract TokenVesting is UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpg
 	}
 
 	// address of the ERC20 token
-	IERC20 internal _token;
+	address internal _token;
+	address internal _treasury;
 
 	bytes32[] internal vestingSchedulesIds;
 	mapping(bytes32 => VestingSchedule) internal vestingSchedules;
 	uint256 internal vestingSchedulesTotalAmount;
 	mapping(address => uint256) internal holdersVestingCount;
 
+	// events
 	event VestingScheduleCreated(address indexed _by, address indexed _beneficiary, bytes32 indexed _vestingScheduleId, VestingSchedule _schedule);
 	event Released(address indexed _by, address indexed _to, bytes32 indexed _vestingScheduleId, uint256 _amount);
 	event Revoked(address indexed _by, address indexed _beneficiary, bytes32 indexed _vestingScheduleId);
-	event Withdrawn(address indexed _by, address indexed _to, uint256 _amount);
+	event TreasuryUpdated(address indexed _by, address indexed _oldVal, address indexed _newVal);
 
 	/**
 	 * @dev Reverts if the vesting schedule does not exist or has been revoked.
@@ -66,11 +68,14 @@ contract TokenVesting is UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpg
 	/**
 	 * @dev UUPS initializer, initializes a vesting contract
 	 *
-	 * @param token_ address of the ERC20 token contract
+	 * @param token_ address of the ERC20 token contract, non-zero, immutable
+	 * @param treasury_ address of the wallet funding vesting contract, mutable
 	 */
-	function postConstruct(address token_) public virtual initializer {
+	function postConstruct(address token_, address treasury_) public virtual initializer {
 		require(token_ != address(0x0));
-		_token = IERC20(token_);
+		// note we don't verify treasury is not zero and allow it to be set up later
+		_token = token_;
+		_treasury = treasury_;
 
 		__Ownable_init();
 		__ReentrancyGuard_init();
@@ -125,6 +130,22 @@ contract TokenVesting is UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpg
 	}
 
 	/**
+	 * @dev Returns the address of the wallet smart contract uses to fund vesting.
+	 */
+	function getTreasury() public view virtual returns (address) {
+		return _treasury;
+	}
+
+	/**
+	 * @dev Updates the wallet address used by the smart contract to fund vesting.
+	 * @param treasury_ wallet address to set to fund vesting
+	 */
+	function setTreasury(address treasury_) public virtual onlyOwner {
+		emit TreasuryUpdated(msg.sender, _treasury, treasury_);
+		_treasury = treasury_;
+	}
+
+	/**
 	 * @notice Creates a new vesting schedule for a beneficiary.
 	 * @param _beneficiary address of the beneficiary to whom vested tokens are transferred
 	 * @param _start start time of the vesting period
@@ -145,10 +166,6 @@ contract TokenVesting is UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpg
 		uint256 _amount,
 		uint256 _immediatelyReleasableAmount
 	) public virtual onlyOwner {
-		require(
-			this.getWithdrawableAmount() >= _amount,
-			"TokenVesting: cannot create vesting schedule because not sufficient tokens"
-		);
 		require(_duration > 0, "TokenVesting: duration must be > 0");
 		require(_amount > 0, "TokenVesting: amount must be > 0");
 		require(_immediatelyReleasableAmount <= _amount, "TokenVesting: immediatelyReleasableAmount must be <= amount");
@@ -197,17 +214,6 @@ contract TokenVesting is UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpg
 	}
 
 	/**
-	 * @notice Withdraw the specified amount if possible.
-	 * @param amount the amount to withdraw
-	 */
-	function withdraw(uint256 amount) public virtual nonReentrant onlyOwner {
-		require(this.getWithdrawableAmount() >= amount, "TokenVesting: not enough withdrawable funds");
-		_token.safeTransfer(owner(), amount);
-
-		emit Withdrawn(msg.sender, owner(), amount);
-	}
-
-	/**
 	 * @notice Release vested amount of tokens.
 	 * @param vestingScheduleId the vesting schedule identifier
 	 * @param amount the amount to release
@@ -228,7 +234,7 @@ contract TokenVesting is UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpg
 		vestingSchedule.released = vestingSchedule.released.add(amount);
 		address payable beneficiaryPayable = payable(vestingSchedule.beneficiary);
 		vestingSchedulesTotalAmount = vestingSchedulesTotalAmount.sub(amount);
-		_token.safeTransfer(beneficiaryPayable, amount);
+		IERC20(_token).safeTransferFrom(_treasury, beneficiaryPayable, amount);
 
 		emit Released(msg.sender, beneficiaryPayable, vestingScheduleId, amount);
 	}
@@ -258,14 +264,6 @@ contract TokenVesting is UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpg
 	 */
 	function getVestingSchedule(bytes32 vestingScheduleId) public view virtual returns (VestingSchedule memory) {
 		return vestingSchedules[vestingScheduleId];
-	}
-
-	/**
-	 * @dev Returns the amount of tokens that can be withdrawn by the owner.
-	 * @return the amount of tokens
-	 */
-	function getWithdrawableAmount() public view virtual returns (uint256) {
-		return _token.balanceOf(address(this)).sub(vestingSchedulesTotalAmount);
 	}
 
 	/**

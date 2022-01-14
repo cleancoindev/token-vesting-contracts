@@ -1,4 +1,4 @@
-// deploy: npx hardhat deploy --network rinkeby --tags v1_deploy
+// deploy: npx hardhat deploy --network rinkeby --tags v2_deploy
 // verify: npx hardhat etherscan-verify --network rinkeby
 
 // script is built for hardhat-deploy plugin:
@@ -20,26 +20,8 @@ module.exports = async function ({ deployments, getChainId, getNamedAccounts, ge
 	console.log("network %o %o", chainId, network.name);
 	console.log("service account %o, nonce: %o, balance: %o ETH", A0, nonce, print_amt(balance));
 
-	// read ALI address from named accounts
-	let { ali_token: ali_address, treasury: wallet_address } = await getNamedAccounts();
-	// for the hardhat network we deploy mocks for the token
-	// (for mainnet these entities are already maintained separately)
-	if (chainId == 0xeeeb04de) {
-		// deploy token Mock (if required)
-		if (!ali_address) {
-			await deployments.deploy("ALI_Mock", {
-				from: A0,
-				contract: "Token",
-				args: ["ALI", "Alethea ERC20 Mock"],
-				skipIfAlreadyDeployed: true,
-				log: true,
-			});
-			ali_address = (await deployments.get("ALI_Mock")).address;
-		}
-	}
-
-	// deploy TokenVesting implementation v1 if required
-	await deployments.deploy("TokenVesting_v1", {
+	// deploy TokenVesting implementation v2 if required
+	await deployments.deploy("TokenVesting_v2", {
 		// address (or private key) that will perform the transaction.
 		// you can use `getNamedAccounts` to retrieve the address you want by name.
 		from: A0,
@@ -51,35 +33,30 @@ module.exports = async function ({ deployments, getChainId, getNamedAccounts, ge
 		// if true, it will log the result of the deployment (tx hash, address and gas used)
 		log: true,
 	});
-	// get TokenVesting implementation v1 deployment details
-	const token_vesting_v1_deployment = await deployments.get("TokenVesting_v1");
-	const token_vesting_v1_contract = new web3.eth.Contract(
-		token_vesting_v1_deployment.abi,
-		token_vesting_v1_deployment.address
+	// get TokenVesting implementation v2 deployment details
+	const token_vesting_v2_deployment = await deployments.get("TokenVesting_v2");
+	const token_vesting_v2_contract = new web3.eth.Contract(
+		token_vesting_v2_deployment.abi,
+		token_vesting_v2_deployment.address
 	);
-
-	// prepare the initialization call bytes
-	const token_vesting_proxy_init_data = token_vesting_v1_contract.methods
-		.postConstruct(ali_address, wallet_address)
-		.encodeABI();
-
-	// deploy TokenVesting Proxy
-	await deployments.deploy("TokenVesting_Proxy", {
-		// address (or private key) that will perform the transaction.
-		// you can use `getNamedAccounts` to retrieve the address you want by name.
-		from: A0,
-		contract: "ERC1967Proxy",
-		// the list of argument for the constructor (or the upgrade function in case of proxy)
-		args: [token_vesting_v1_deployment.address, token_vesting_proxy_init_data],
-		// if set it to true, will not attempt to deploy even if the contract deployed under the same name is different
-		skipIfAlreadyDeployed: true,
-		// if true, it will log the result of the deployment (tx hash, address and gas used)
-		log: true,
-	});
 	// get TokenVesting proxy deployment details
 	const token_vesting_proxy_deployment = await deployments.get("TokenVesting_Proxy");
 	// print TokenVesting proxy deployment details
-	await print_token_vesting_acl_details(A0, token_vesting_v1_deployment.abi, token_vesting_proxy_deployment.address);
+	await print_token_vesting_acl_details(A0, token_vesting_v2_deployment.abi, token_vesting_proxy_deployment.address);
+
+	// prepare the upgradeTo call bytes
+	const token_vesting_proxy_upgrade_data = token_vesting_v2_contract.methods
+		.upgradeTo(token_vesting_v2_deployment.address)
+		.encodeABI();
+
+	// update the implementation address in the proxy
+	// TODO: do not update if already updated
+	const receipt = await deployments.rawTx({
+		from: A0,
+		to: token_vesting_proxy_deployment.address,
+		data: token_vesting_proxy_upgrade_data, // upgradeTo(token_vesting_v2_deployment.address)
+	});
+	console.log("TokenVesting_Proxy.upgradeTo(%o): %o", token_vesting_v2_deployment.address, receipt.transactionHash);
 };
 
 // prints generic TokenVesting info + Ownable (owner)
@@ -106,4 +83,5 @@ async function print_token_vesting_acl_details(a0, abi, address) {
 // Then if another deploy script has such tag as a dependency, then when the latter deploy script has a specific tag
 // and that tag is requested, the dependency will be executed first.
 // https://www.npmjs.com/package/hardhat-deploy#deploy-scripts-tags-and-dependencies
-module.exports.tags = ["v1_deploy", "deploy", "v1"];
+module.exports.tags = ["v2_deploy", "deploy", "v2"];
+// module.exports.dependencies = ["v1_deploy"];

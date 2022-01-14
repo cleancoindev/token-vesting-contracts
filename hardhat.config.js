@@ -53,9 +53,13 @@ module.exports = {
 	// https://github.com/wighawag/hardhat-deploy#1-namedaccounts-ability-to-name-addresses
 	namedAccounts: {
 		// Alethea ERC20 (ALI)
-		ali: {
+		ali_token: {
 			mainnet: "0x6B0b3a982b4634aC68dD83a4DBF02311cE324181",
 			rinkeby: "0x088effA8E63DF55F3736f04ED25581326f9798BA",
+		},
+		treasury: {
+			mainnet: "0x0000000000000000000000000000000000000000",
+			rinkeby: "0x0000000000000000000000000000000000000000",
 		},
 	},
 };
