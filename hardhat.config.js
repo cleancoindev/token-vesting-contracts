@@ -25,6 +25,7 @@ module.exports = {
 		},
 	},
 	networks: {
+		hardhat: hardhatNetworkConfig(),
 		mainnet: mainnetNetworkConfig(),
 		rinkeby: rinkebyNetworkConfig(),
 		goerli: goerliNetworkConfig(),
@@ -58,6 +59,20 @@ module.exports = {
 		},
 	},
 };
+
+function hardhatNetworkConfig() {
+	return {
+		// set networkId to 0xeeeb04de as for all local networks
+		chainId: 0xeeeb04de,
+		// set the gas price to one for convenient tx costs calculations in tests
+		gasPrice: 1,
+		// London hard fork fix: impossible to set gas price lower than baseFeePerGas (875,000,000)
+		initialBaseFeePerGas: 0,
+		accounts: {
+			count: 35,
+		},
+	};
+}
 
 function mainnetNetworkConfig() {
 	let url = "https://mainnet.infura.io/v3/";

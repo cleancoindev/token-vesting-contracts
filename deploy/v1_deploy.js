@@ -38,7 +38,10 @@ module.exports = async function ({ deployments, getChainId, getNamedAccounts, ge
 	});
 	// get TokenVesting implementation v1 deployment details
 	const token_vesting_v1_deployment = await deployments.get("TokenVesting_v1");
-	const token_vesting_v1_contract = new web3.eth.Contract(token_vesting_v1_deployment.abi, token_vesting_v1_deployment.address);
+	const token_vesting_v1_contract = new web3.eth.Contract(
+		token_vesting_v1_deployment.abi,
+		token_vesting_v1_deployment.address
+	);
 
 	// prepare the initialization call bytes
 	const token_vesting_proxy_init_data = token_vesting_v1_contract.methods.postConstruct(ali_address).encodeABI();
@@ -62,7 +65,7 @@ module.exports = async function ({ deployments, getChainId, getNamedAccounts, ge
 	await print_token_vesting_acl_details(A0, token_vesting_v1_deployment.abi, token_vesting_proxy_deployment.address);
 };
 
-// prints generic NFT info (name, symbol, etc.) + Ownable (owner)
+// prints generic TokenVesting info + Ownable (owner)
 async function print_token_vesting_acl_details(a0, abi, address) {
 	const web3_contract = new web3.eth.Contract(abi, address);
 	const owner = await web3_contract.methods.owner().call();
