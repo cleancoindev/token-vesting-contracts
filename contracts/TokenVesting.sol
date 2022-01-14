@@ -76,9 +76,9 @@ contract TokenVesting is UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpg
 		__ReentrancyGuard_init();
 	}
 
-    receive() external payable {}
+	// receive() external payable {}
 
-    fallback() external payable {}
+	// fallback() external payable {}
 
 	/**
 	 * @dev Returns the number of vesting schedules associated to a beneficiary.
