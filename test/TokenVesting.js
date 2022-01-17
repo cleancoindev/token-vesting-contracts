@@ -315,7 +315,7 @@ describe("TokenVesting", function () {
 
 		it("Should check input parameters for createVestingSchedule method", async function () {
 			const tokenVesting = await deploy();
-			const time = Date.now();
+			const time = Date.now() / 1000 | 0;
 			await expect(tokenVesting.createVestingSchedule(addr1.address, time, 0, 0, 1, false, 1, 0)).to.be.revertedWith(
 				"TokenVesting: duration must be > 0"
 			);

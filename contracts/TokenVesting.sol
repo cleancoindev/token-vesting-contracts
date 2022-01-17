@@ -5,7 +5,6 @@ pragma solidity 0.8.11;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
@@ -15,30 +14,30 @@ import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.
  * @title TokenVesting
  */
 contract TokenVesting is UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
-	using SafeMath for uint256;
 	using SafeERC20 for IERC20;
 	struct VestingSchedule {
+		// set to true when schedule is created
 		bool initialized;
+		// whether or not the vesting is revocable
+		bool revocable;
+		// whether or not the vesting has been revoked
+		bool revoked;
 		// beneficiary of tokens after they are released
 		address beneficiary;
 		// cliff time as unix timestamp
-		uint256 cliff;
+		uint32 cliff;
 		// start time of the vesting period
-		uint256 start;
+		uint32 start;
 		// duration of the vesting period in seconds
-		uint256 duration;
+		uint32 duration;
 		// duration of a slice period for the vesting in seconds
-		uint256 slicePeriodSeconds;
-		// whether or not the vesting is revocable
-		bool revocable;
+		uint32 slicePeriodSeconds;
 		// total amount of tokens to be released at the end of the vesting
-		uint256 amountTotal;
+		uint128 amountTotal;
 		// total amount of tokens to be released at the beginning of the vesting
-		uint256 immediatelyReleasableAmount;
+		uint128 immediatelyReleasableAmount;
 		// amount of tokens released
-		uint256 released;
-		// whether or not the vesting has been revoked
-		bool revoked;
+		uint128 released;
 	}
 
 	// address of the ERC20 token
@@ -158,37 +157,37 @@ contract TokenVesting is UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpg
 	 */
 	function createVestingSchedule(
 		address _beneficiary,
-		uint256 _start,
-		uint256 _cliff,
-		uint256 _duration,
-		uint256 _slicePeriodSeconds,
+		uint32 _start,
+		uint32 _cliff,
+		uint32 _duration,
+		uint32 _slicePeriodSeconds,
 		bool _revocable,
-		uint256 _amount,
-		uint256 _immediatelyReleasableAmount
+		uint128 _amount,
+		uint128 _immediatelyReleasableAmount
 	) public virtual onlyOwner {
 		require(_duration > 0, "TokenVesting: duration must be > 0");
 		require(_amount > 0, "TokenVesting: amount must be > 0");
 		require(_immediatelyReleasableAmount <= _amount, "TokenVesting: immediatelyReleasableAmount must be <= amount");
 		require(_slicePeriodSeconds >= 1, "TokenVesting: slicePeriodSeconds must be >= 1");
 		bytes32 vestingScheduleId = this.computeNextVestingScheduleIdForHolder(_beneficiary);
-		uint256 cliff = _start.add(_cliff);
+		uint32 cliff = _start + _cliff;
 		vestingSchedules[vestingScheduleId] = VestingSchedule(
 			true,
+			_revocable,
+			false,
 			_beneficiary,
 			cliff,
 			_start,
 			_duration,
 			_slicePeriodSeconds,
-			_revocable,
 			_amount,
 			_immediatelyReleasableAmount,
-			0,
-			false
+			0
 		);
-		vestingSchedulesTotalAmount = vestingSchedulesTotalAmount.add(_amount);
+		vestingSchedulesTotalAmount = vestingSchedulesTotalAmount + _amount;
 		vestingSchedulesIds.push(vestingScheduleId);
 		uint256 currentVestingCount = holdersVestingCount[_beneficiary];
-		holdersVestingCount[_beneficiary] = currentVestingCount.add(1);
+		holdersVestingCount[_beneficiary] = currentVestingCount + 1;
 
 		emit VestingScheduleCreated(msg.sender, _beneficiary, vestingScheduleId, vestingSchedules[vestingScheduleId]);
 	}
@@ -202,12 +201,12 @@ contract TokenVesting is UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpg
 	) public virtual onlyOwner onlyIfVestingScheduleNotRevoked(vestingScheduleId) {
 		VestingSchedule storage vestingSchedule = vestingSchedules[vestingScheduleId];
 		require(vestingSchedule.revocable == true, "TokenVesting: vesting is not revocable");
-		uint256 vestedAmount = _computeReleasableAmount(vestingSchedule);
+		uint128 vestedAmount = _computeReleasableAmount(vestingSchedule);
 		if (vestedAmount > 0) {
 			release(vestingScheduleId, vestedAmount);
 		}
-		uint256 unreleased = vestingSchedule.amountTotal.sub(vestingSchedule.released);
-		vestingSchedulesTotalAmount = vestingSchedulesTotalAmount.sub(unreleased);
+		uint256 unreleased = vestingSchedule.amountTotal - vestingSchedule.released;
+		vestingSchedulesTotalAmount = vestingSchedulesTotalAmount - unreleased;
 		vestingSchedule.revoked = true;
 
 		emit Revoked(msg.sender, vestingSchedule.beneficiary, vestingScheduleId);
@@ -220,7 +219,7 @@ contract TokenVesting is UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpg
 	 */
 	function release(
 		bytes32 vestingScheduleId,
-		uint256 amount
+		uint128 amount
 	) public virtual nonReentrant onlyIfVestingScheduleNotRevoked(vestingScheduleId) {
 		VestingSchedule storage vestingSchedule = vestingSchedules[vestingScheduleId];
 		bool isBeneficiary = msg.sender == vestingSchedule.beneficiary;
@@ -231,9 +230,9 @@ contract TokenVesting is UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpg
 		);
 		uint256 vestedAmount = _computeReleasableAmount(vestingSchedule);
 		require(vestedAmount >= amount, "TokenVesting: cannot release tokens, not enough vested tokens");
-		vestingSchedule.released = vestingSchedule.released.add(amount);
+		vestingSchedule.released = vestingSchedule.released + amount;
 		address payable beneficiaryPayable = payable(vestingSchedule.beneficiary);
-		vestingSchedulesTotalAmount = vestingSchedulesTotalAmount.sub(amount);
+		vestingSchedulesTotalAmount = vestingSchedulesTotalAmount - amount;
 		IERC20(_token).safeTransferFrom(_treasury, beneficiaryPayable, amount);
 
 		emit Released(msg.sender, beneficiaryPayable, vestingScheduleId, amount);
@@ -293,21 +292,21 @@ contract TokenVesting is UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpg
 	 * @dev Computes the releasable amount of tokens for a vesting schedule.
 	 * @return the amount of releasable tokens
 	 */
-	function _computeReleasableAmount(VestingSchedule memory vestingSchedule) internal view virtual returns (uint256) {
+	function _computeReleasableAmount(VestingSchedule memory vestingSchedule) internal view virtual returns (uint128) {
 		uint256 currentTime = getCurrentTime();
 		if ((currentTime < vestingSchedule.cliff) || vestingSchedule.revoked == true) {
-			return vestingSchedule.immediatelyReleasableAmount.sub(vestingSchedule.released);
-		} else if (currentTime >= vestingSchedule.start.add(vestingSchedule.duration)) {
-			return vestingSchedule.amountTotal.sub(vestingSchedule.released);
+			return vestingSchedule.immediatelyReleasableAmount - vestingSchedule.released;
+		} else if (currentTime >= vestingSchedule.start + vestingSchedule.duration) {
+			return vestingSchedule.amountTotal - vestingSchedule.released;
 		} else {
-			uint256 timeFromStart = currentTime.sub(vestingSchedule.start);
-			uint secondsPerSlice = vestingSchedule.slicePeriodSeconds;
-			uint256 vestedSlicePeriods = timeFromStart.div(secondsPerSlice);
-			uint256 vestedSeconds = vestedSlicePeriods.mul(secondsPerSlice);
-			uint256 vestedAmount = vestingSchedule.amountTotal.mul(vestedSeconds).div(vestingSchedule.duration);
-			vestedAmount = vestedAmount.add(vestingSchedule.immediatelyReleasableAmount);
-			vestedAmount = vestedAmount.sub(vestingSchedule.released);
-			return vestedAmount;
+			uint256 timeFromStart = currentTime - vestingSchedule.start;
+			uint256 secondsPerSlice = vestingSchedule.slicePeriodSeconds;
+			uint256 vestedSlicePeriods = timeFromStart / secondsPerSlice;
+			uint256 vestedSeconds = vestedSlicePeriods * secondsPerSlice;
+			uint256 vestedAmount = vestingSchedule.amountTotal * vestedSeconds / vestingSchedule.duration;
+			vestedAmount = vestedAmount + vestingSchedule.immediatelyReleasableAmount;
+			vestedAmount = vestedAmount - vestingSchedule.released;
+			return uint128(vestedAmount);
 		}
 	}
 
