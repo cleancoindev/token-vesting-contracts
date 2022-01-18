@@ -102,6 +102,47 @@ describe("TokenVesting", function () {
 			expect(schedule.revoked, "revoked").to.be.false;
 		});
 
+		it("Should not allow releasing before vesting schedule starts", async function() {
+			// deploy vesting contract
+			const tokenVesting = await deploy();
+
+			const baseTime = 1622551248;
+			const beneficiary = addr1;
+			const startTime = baseTime;
+			const cliff = 17;
+			const duration = 1356;
+			const slicePeriodSeconds = 3;
+			const revocable = true;
+			const amount = 342;
+			const immediatelyReleasableAmount = 38;
+
+			// create new vesting schedule
+			await tokenVesting.createVestingSchedule(
+				beneficiary.address,
+				startTime,
+				cliff,
+				duration,
+				slicePeriodSeconds,
+				revocable,
+				amount,
+				immediatelyReleasableAmount
+			);
+
+			// compute vesting schedule id
+			const vestingScheduleId = await tokenVesting.computeVestingScheduleIdForAddressAndIndex(beneficiary.address, 0);
+
+			// check before start
+			await tokenVesting.setCurrentTime(startTime - 1);
+			expect(await tokenVesting.computeReleasableAmount(vestingScheduleId)).to.be.equal(0);
+			// check during start
+			await tokenVesting.setCurrentTime(startTime);
+			expect(await tokenVesting.computeReleasableAmount(vestingScheduleId)).to.be.equal(immediatelyReleasableAmount);
+			// what if we revoke before start?
+			await tokenVesting.setCurrentTime(startTime - 1);
+			await tokenVesting.revoke(vestingScheduleId);
+			expect(await tokenVesting.computeReleasableAmount(vestingScheduleId)).to.be.equal(0);
+		});
+
 		it("Should vest tokens gradually", async function () {
 			// deploy vesting contract
 			const tokenVesting = await deploy();
@@ -297,7 +338,7 @@ describe("TokenVesting", function () {
 			await testToken.approve(tokenVesting.address, amount);
 			await tokenVesting.revoke(vestingScheduleId);
 
-			await expect(tokenVesting.computeReleasableAmount(vestingScheduleId)).to.be.reverted;
+			expect(await tokenVesting.computeReleasableAmount(vestingScheduleId)).to.be.equal(0);
 			await expect(tokenVesting.revoke(vestingScheduleId)).to.be.reverted;
 			await expect(tokenVesting.release(vestingScheduleId, 1)).to.be.reverted;
 		});

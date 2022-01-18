@@ -56,6 +56,14 @@ contract TokenVesting is UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpg
 	event TreasuryUpdated(address indexed _by, address indexed _oldVal, address indexed _newVal);
 
 	/**
+	* @dev Reverts if no vesting schedule matches the passed identifier.
+	*/
+	modifier onlyIfVestingScheduleExists(bytes32 vestingScheduleId) {
+		require(vestingSchedules[vestingScheduleId].initialized == true);
+		_;
+	}
+
+	/**
 	 * @dev Reverts if the vesting schedule does not exist or has been revoked.
 	 */
 	modifier onlyIfVestingScheduleNotRevoked(bytes32 vestingScheduleId) {
@@ -252,7 +260,7 @@ contract TokenVesting is UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpg
 	 */
 	function computeReleasableAmount(
 		bytes32 vestingScheduleId
-	) public view virtual onlyIfVestingScheduleNotRevoked(vestingScheduleId) returns (uint256) {
+	) public view virtual onlyIfVestingScheduleExists(vestingScheduleId) returns (uint256) {
 		VestingSchedule storage vestingSchedule = vestingSchedules[vestingScheduleId];
 		return _computeReleasableAmount(vestingSchedule);
 	}
@@ -294,7 +302,9 @@ contract TokenVesting is UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpg
 	 */
 	function _computeReleasableAmount(VestingSchedule memory vestingSchedule) internal view virtual returns (uint128) {
 		uint256 currentTime = getCurrentTime();
-		if ((currentTime < vestingSchedule.cliff) || vestingSchedule.revoked == true) {
+		if (currentTime < vestingSchedule.start || vestingSchedule.revoked == true) {
+			return 0;
+		} else if (currentTime < vestingSchedule.cliff) {
 			return vestingSchedule.immediatelyReleasableAmount - vestingSchedule.released;
 		} else if (currentTime >= vestingSchedule.start + vestingSchedule.duration) {
 			return vestingSchedule.amountTotal - vestingSchedule.released;
