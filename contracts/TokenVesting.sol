@@ -313,9 +313,10 @@ contract TokenVesting is UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpg
 			uint256 secondsPerSlice = vestingSchedule.slicePeriodSeconds;
 			uint256 vestedSlicePeriods = timeFromStart / secondsPerSlice;
 			uint256 vestedSeconds = vestedSlicePeriods * secondsPerSlice;
-			uint256 vestedAmount = vestingSchedule.amountTotal * vestedSeconds / vestingSchedule.duration;
-			vestedAmount = vestedAmount + vestingSchedule.immediatelyReleasableAmount;
-			vestedAmount = vestedAmount - vestingSchedule.released;
+			uint256 vestedAmount = (vestingSchedule.amountTotal - vestingSchedule.immediatelyReleasableAmount)
+				* vestedSeconds / vestingSchedule.duration
+				+ vestingSchedule.immediatelyReleasableAmount
+				- vestingSchedule.released;
 			return uint128(vestedAmount);
 		}
 	}
