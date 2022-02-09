@@ -41,8 +41,8 @@
 	},
 	"homepage": "https://github.com/AletheaAI/token-vesting-contracts#readme",
 	"dependencies": {
-		"@openzeppelin/contracts": "^4.4.2",
-		"@openzeppelin/contracts-upgradeable": "^4.4.2",
+		"@openzeppelin/contracts": "4.4.2",
+		"@openzeppelin/contracts-upgradeable": "4.4.2",
 		"prettier": "^2.3.0",
 		"solc": "npm:solc@^0.8.4",
 		"solidity-coverage": "^0.7.16",
