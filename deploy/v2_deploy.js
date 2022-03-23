@@ -25,7 +25,7 @@ module.exports = async function ({ deployments, getChainId, getNamedAccounts, ge
 		// address (or private key) that will perform the transaction.
 		// you can use `getNamedAccounts` to retrieve the address you want by name.
 		from: A0,
-		contract: "TokenVesting",
+		contract: "TokenVestingV2",
 		// the list of argument for the constructor (or the upgrade function in case of proxy)
 		// args: [],
 		// if set it to true, will not attempt to deploy even if the contract deployed under the same name is different
